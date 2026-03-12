@@ -1,1 +1,624 @@
-"��� ᠩ�" 
+<!-- college_hr.html - Один файл -->
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Управление персоналом колледжа</title>
+    <style>
+        * { box-sizing: border-box; font-family: Arial; margin: 0; padding: 0; }
+        body { background: #f0f2f5; }
+        .header { background: #2c3e50; color: white; padding: 1rem; }
+        .container { max-width: 1200px; margin: 0 auto; padding: 20px; }
+        .login-box { background: white; max-width: 400px; margin: 50px auto; padding: 30px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        .nav { background: #34495e; padding: 10px; }
+        .nav a { color: white; text-decoration: none; padding: 10px 20px; display: inline-block; }
+        .nav a:hover { background: #2c3e50; }
+        .card { background: white; border-radius: 8px; padding: 20px; margin: 20px 0; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { padding: 12px; text-align: left; border-bottom: 1px solid #ddd; }
+        th { background: #3498db; color: white; }
+        input, select, button { padding: 10px; margin: 5px; border: 1px solid #ddd; border-radius: 4px; }
+        button { background: #3498db; color: white; border: none; cursor: pointer; }
+        button:hover { background: #2980b9; }
+        .btn-danger { background: #e74c3c; }
+        .btn-danger:hover { background: #c0392b; }
+        .role-badge { padding: 5px 10px; border-radius: 20px; font-size: 12px; color: white; }
+        .admin { background: #e74c3c; }
+        .hr { background: #27ae60; }
+        .manager { background: #f39c12; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px; }
+        .stat-card { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; border-radius: 10px; }
+        .hidden { display: none; }
+        .error { background: #f8d7da; color: #721c24; padding: 10px; border-radius: 4px; }
+        .success { background: #d4edda; color: #155724; padding: 10px; border-radius: 4px; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="container">
+            <h1>🏛️ Система управления персоналом колледжа</h1>
+        </div>
+    </div>
+
+    <div class="nav">
+        <div class="container" id="navMenu">
+            <!-- Навигация будет заполняться JS -->
+        </div>
+    </div>
+
+    <div class="container" id="app">
+        <!-- Контент будет динамически загружаться -->
+    </div>
+
+    <script>
+        // ========== ДАННЫЕ (имитация БД) ==========
+        let currentUser = null;
+        let users = [
+            { id: 1, login: 'admin', pass: 'admin123', role: 'admin', name: 'Администратор' },
+            { id: 2, login: 'hr', pass: 'hr123', role: 'hr', name: 'HR Менеджер' },
+            { id: 3, login: 'manager', pass: 'manager123', role: 'manager', name: 'Руководитель' }
+        ];
+
+        let employees = [
+            { id: 1, name: 'Иван Петров', dept: 'ИТ', pos: 'Преподаватель', salary: 55000, exp: 5, status: 'active' },
+            { id: 2, name: 'Мария Сидорова', dept: 'Бухгалтерия', pos: 'Бухгалтер', salary: 48000, exp: 3, status: 'active' },
+            { id: 3, name: 'Анна Иванова', dept: 'Кадры', pos: 'Специалист', salary: 45000, exp: 2, status: 'active' },
+            { id: 4, name: 'Сергей Козлов', dept: 'ИТ', pos: 'Старший преподаватель', salary: 65000, exp: 8, status: 'active' }
+        ];
+
+        let salaryHistory = [];
+        let logs = [];
+
+        // ========== БЕЗОПАСНОСТЬ (пункты 2-3) ==========
+        const security = {
+            maxAttempts: 3,
+            attempts: {},
+            blockTime: 5 * 60 * 1000, // 5 минут
+            
+            checkLogin(login, pass) {
+                // Проверка на блокировку
+                if (this.attempts[login] && this.attempts[login].blockedUntil > Date.now()) {
+                    return { success: false, message: 'Аккаунт заблокирован на 5 минут' };
+                }
+                
+                const user = users.find(u => u.login === login && u.pass === pass);
+                
+                if (user) {
+                    // Успешный вход - сбрасываем попытки
+                    delete this.attempts[login];
+                    this.log('success', `Вход в систему: ${login}`);
+                    return { success: true, user };
+                } else {
+                    // Неудачная попытка
+                    if (!this.attempts[login]) {
+                        this.attempts[login] = { count: 1 };
+                    } else {
+                        this.attempts[login].count++;
+                    }
+                    
+                    if (this.attempts[login].count >= this.maxAttempts) {
+                        this.attempts[login].blockedUntil = Date.now() + this.blockTime;
+                        this.log('warning', `Блокировка аккаунта: ${login}`);
+                    }
+                    
+                    this.log('error', `Неудачная попытка входа: ${login}`);
+                    return { success: false, message: 'Неверный логин или пароль' };
+                }
+            },
+            
+            checkRole(requiredRole) {
+                if (!currentUser) return false;
+                if (requiredRole === 'admin' && currentUser.role !== 'admin') return false;
+                if (requiredRole === 'hr' && !['admin', 'hr'].includes(currentUser.role)) return false;
+                return true;
+            },
+            
+            log(type, message) {
+                logs.push({ type, message, time: new Date().toLocaleString(), user: currentUser?.login });
+            }
+        };
+
+        // ========== КОНТРОЛЬ ВЕРСИЙ (пункт 1) ==========
+        const versionControl = {
+            versions: [],
+            
+            save(data, comment) {
+                this.versions.push({
+                    id: this.versions.length + 1,
+                    data: JSON.parse(JSON.stringify(data)),
+                    comment,
+                    user: currentUser?.login,
+                    time: new Date().toLocaleString()
+                });
+                security.log('info', `Сохранена версия: ${comment}`);
+            },
+            
+            rollback(versionId) {
+                const version = this.versions.find(v => v.id === versionId);
+                if (version) {
+                    employees = JSON.parse(JSON.stringify(version.data.employees));
+                    security.log('info', `Откат к версии ${versionId}`);
+                    return true;
+                }
+                return false;
+            }
+        };
+
+        // ========== АЛГОРИТМЫ ОБРАБОТКИ ЧИСЛОВЫХ ДАННЫХ (пункт 5) ==========
+        const calculators = {
+            // Расчет зарплаты с налогами
+            calculateSalary(base, bonus = 0, experience = 0) {
+                const bonusAmount = base * (bonus / 100);
+                const expBonus = base * (experience * 0.01); // 1% за каждый год стажа
+                const gross = base + bonusAmount + expBonus;
+                const tax = gross * 0.13; // 13% НДФЛ
+                const pension = gross * 0.22; // 22% пенсионные
+                const medical = gross * 0.051; // 5.1% медицина
+                const net = gross - tax;
+                
+                return {
+                    base, bonus: bonusAmount, expBonus: expBonus,
+                    gross: gross.toFixed(2),
+                    tax: tax.toFixed(2),
+                    pension: pension.toFixed(2),
+                    medical: medical.toFixed(2),
+                    net: net.toFixed(2),
+                    totalTaxes: (tax + pension + medical).toFixed(2)
+                };
+            },
+            
+            // Статистика по отделам
+            departmentStats(dept) {
+                const deptEmps = employees.filter(e => e.dept === dept);
+                if (!deptEmps.length) return null;
+                
+                const salaries = deptEmps.map(e => e.salary);
+                const avg = salaries.reduce((a, b) => a + b, 0) / salaries.length;
+                const max = Math.max(...salaries);
+                const min = Math.min(...salaries);
+                
+                return {
+                    count: deptEmps.length,
+                    avgSalary: avg.toFixed(2),
+                    maxSalary: max,
+                    minSalary: min,
+                    totalSalary: salaries.reduce((a, b) => a + b, 0).toFixed(2),
+                    salaryDispersion: (max - min).toFixed(2)
+                };
+            },
+            
+            // Прогноз бюджета
+            forecastBudget(months = 3) {
+                const totalSalary = employees.reduce((sum, e) => sum + e.salary, 0);
+                const forecast = [];
+                
+                for (let i = 1; i <= months; i++) {
+                    const growth = 1 + (i * 0.02); // 2% роста в месяц
+                    const monthTotal = totalSalary * growth;
+                    forecast.push({
+                        month: i,
+                        salary: monthTotal.toFixed(2),
+                        taxes: (monthTotal * 0.3).toFixed(2),
+                        total: (monthTotal * 1.3).toFixed(2)
+                    });
+                }
+                
+                return forecast;
+            }
+        };
+
+        // ========== РЕНДЕРИНГ ИНТЕРФЕЙСА (пункт 4) ==========
+        function render() {
+            const app = document.getElementById('app');
+            const nav = document.getElementById('navMenu');
+            
+            if (!currentUser) {
+                nav.innerHTML = '';
+                renderLogin();
+                return;
+            }
+            
+            // Навигация
+            nav.innerHTML = `
+                <a href="#" onclick="showPage('dashboard')">📊 Дашборд</a>
+                <a href="#" onclick="showPage('employees')">👥 Сотрудники</a>
+                <a href="#" onclick="showPage('calculator')">🧮 Калькулятор</a>
+                <a href="#" onclick="showPage('reports')">📈 Отчеты</a>
+                ${currentUser.role === 'admin' ? '<a href="#" onclick="showPage(\'admin\')">⚙️ Администрирование</a>' : ''}
+                <a href="#" onclick="logout()" style="float:right;">🚪 Выход (${currentUser.name})</a>
+            `;
+            
+            // Показываем страницу по умолчанию
+            showPage('dashboard');
+        }
+
+        function renderLogin() {
+            document.getElementById('app').innerHTML = `
+                <div class="login-box">
+                    <h2>🔐 Вход в систему</h2>
+                    <div id="loginError"></div>
+                    <input type="text" id="login" placeholder="Логин" value="admin">
+                    <input type="password" id="password" placeholder="Пароль" value="admin123">
+                    <button onclick="doLogin()">Войти</button>
+                    <div style="margin-top: 20px; font-size: 12px; color: #666;">
+                        <p>Тестовые пользователи:</p>
+                        <p>admin / admin123</p>
+                        <p>hr / hr123</p>
+                        <p>manager / manager123</p>
+                    </div>
+                </div>
+            `;
+        }
+
+        function showPage(page) {
+            const pages = {
+                dashboard: renderDashboard,
+                employees: renderEmployees,
+                calculator: renderCalculator,
+                reports: renderReports,
+                admin: renderAdmin
+            };
+            
+            if (pages[page]) {
+                pages[page]();
+            }
+        }
+
+        function renderDashboard() {
+            const total = employees.length;
+            const active = employees.filter(e => e.status === 'active').length;
+            const avgSalary = (employees.reduce((sum, e) => sum + e.salary, 0) / total).toFixed(2);
+            const depts = [...new Set(employees.map(e => e.dept))];
+            
+            document.getElementById('app').innerHTML = `
+                <div class="card">
+                    <h2>📊 Панель управления</h2>
+                    <div class="grid">
+                        <div class="stat-card">
+                            <h3>Всего сотрудников</h3>
+                            <h1>${total}</h1>
+                        </div>
+                        <div class="stat-card">
+                            <h3>Активных</h3>
+                            <h1>${active}</h1>
+                        </div>
+                        <div class="stat-card">
+                            <h3>Средняя зарплата</h3>
+                            <h1>${avgSalary} ₽</h1>
+                        </div>
+                        <div class="stat-card">
+                            <h3>Отделов</h3>
+                            <h1>${depts.length}</h1>
+                        </div>
+                    </div>
+                    
+                    <h3 style="margin-top: 20px;">Статистика по отделам</h3>
+                    <table>
+                        <tr>
+                            <th>Отдел</th>
+                            <th>Сотрудников</th>
+                            <th>Средняя ЗП</th>
+                            <th>Макс ЗП</th>
+                            <th>Мин ЗП</th>
+                        </tr>
+                        ${depts.map(dept => {
+                            const stats = calculators.departmentStats(dept);
+                            return stats ? `
+                                <tr>
+                                    <td>${dept}</td>
+                                    <td>${stats.count}</td>
+                                    <td>${stats.avgSalary} ₽</td>
+                                    <td>${stats.maxSalary} ₽</td>
+                                    <td>${stats.minSalary} ₽</td>
+                                </tr>
+                            ` : '';
+                        }).join('')}
+                    </table>
+                </div>
+            `;
+        }
+
+        function renderEmployees() {
+            const canEdit = security.checkRole('hr');
+            
+            document.getElementById('app').innerHTML = `
+                <div class="card">
+                    <h2>👥 Управление сотрудниками</h2>
+                    
+                    ${canEdit ? `
+                        <div style="background: #f8f9fa; padding: 15px; border-radius: 5px; margin-bottom: 20px;">
+                            <h4>Добавить сотрудника</h4>
+                            <input type="text" id="empName" placeholder="ФИО">
+                            <input type="text" id="empDept" placeholder="Отдел">
+                            <input type="text" id="empPos" placeholder="Должность">
+                            <input type="number" id="empSalary" placeholder="Зарплата">
+                            <input type="number" id="empExp" placeholder="Стаж (лет)">
+                            <button onclick="addEmployee()">➕ Добавить</button>
+                        </div>
+                    ` : ''}
+                    
+                    <table>
+                        <tr>
+                            <th>ID</th>
+                            <th>ФИО</th>
+                            <th>Отдел</th>
+                            <th>Должность</th>
+                            <th>Зарплата</th>
+                            <th>Стаж</th>
+                            <th>Статус</th>
+                            ${canEdit ? '<th>Действия</th>' : ''}
+                        </tr>
+                        ${employees.map(emp => `
+                            <tr>
+                                <td>${emp.id}</td>
+                                <td>${emp.name}</td>
+                                <td>${emp.dept}</td>
+                                <td>${emp.pos}</td>
+                                <td>${emp.salary} ₽</td>
+                                <td>${emp.exp} лет</td>
+                                <td>${emp.status}</td>
+                                ${canEdit ? `
+                                    <td>
+                                        <button class="btn-danger" onclick="deleteEmployee(${emp.id})">❌</button>
+                                        <button onclick="saveVersion()" title="Сохранить версию">💾</button>
+                                    </td>
+                                ` : ''}
+                            </tr>
+                        `).join('')}
+                    </table>
+                </div>
+            `;
+        }
+
+        function renderCalculator() {
+            document.getElementById('app').innerHTML = `
+                <div class="card">
+                    <h2>🧮 Калькулятор зарплаты</h2>
+                    
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                        <div>
+                            <h3>Расчет зарплаты</h3>
+                            <input type="number" id="calcBase" placeholder="Базовая зарплата" value="50000">
+                            <input type="number" id="calcBonus" placeholder="Бонус %" value="10">
+                            <input type="number" id="calcExp" placeholder="Стаж (лет)" value="3">
+                            <button onclick="calculateAndShow()">Рассчитать</button>
+                            
+                            <div id="calcResult" style="margin-top: 20px; padding: 15px; background: #f8f9fa; border-radius: 5px;"></div>
+                        </div>
+                        
+                        <div>
+                            <h3>Прогноз бюджета</h3>
+                            <button onclick="showForecast()">Показать прогноз на 3 месяца</button>
+                            <div id="forecastResult" style="margin-top: 20px;"></div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderReports() {
+            const forecast = calculators.forecastBudget(3);
+            
+            document.getElementById('app').innerHTML = `
+                <div class="card">
+                    <h2>📈 Отчеты и аналитика</h2>
+                    
+                    <h3>Последние действия</h3>
+                    <table>
+                        <tr>
+                            <th>Время</th>
+                            <th>Тип</th>
+                            <th>Сообщение</th>
+                            <th>Пользователь</th>
+                        </tr>
+                        ${logs.slice(-5).reverse().map(log => `
+                            <tr>
+                                <td>${log.time}</td>
+                                <td><span class="role-badge ${log.type}">${log.type}</span></td>
+                                <td>${log.message}</td>
+                                <td>${log.user || '-'}</td>
+                            </tr>
+                        `).join('')}
+                    </table>
+                    
+                    <h3 style="margin-top: 20px;">Прогноз бюджета</h3>
+                    <table>
+                        <tr>
+                            <th>Месяц</th>
+                            <th>ФОТ</th>
+                            <th>Налоги</th>
+                            <th>Всего</th>
+                        </tr>
+                        ${forecast.map(f => `
+                            <tr>
+                                <td>Месяц ${f.month}</td>
+                                <td>${f.salary} ₽</td>
+                                <td>${f.taxes} ₽</td>
+                                <td>${f.total} ₽</td>
+                            </tr>
+                        `).join('')}
+                    </table>
+                </div>
+            `;
+        }
+
+        function renderAdmin() {
+            if (!security.checkRole('admin')) {
+                renderDashboard();
+                return;
+            }
+            
+            document.getElementById('app').innerHTML = `
+                <div class="card">
+                    <h2>⚙️ Администрирование</h2>
+                    
+                    <h3>Управление пользователями</h3>
+                    <table>
+                        <tr>
+                            <th>ID</th>
+                            <th>Логин</th>
+                            <th>Имя</th>
+                            <th>Роль</th>
+                            <th>Действия</th>
+                        </tr>
+                        ${users.map(u => `
+                            <tr>
+                                <td>${u.id}</td>
+                                <td>${u.login}</td>
+                                <td>${u.name}</td>
+                                <td><span class="role-badge ${u.role}">${u.role}</span></td>
+                                <td>
+                                    <button onclick="changeRole(${u.id})">🔄 Сменить роль</button>
+                                </td>
+                            </tr>
+                        `).join('')}
+                    </table>
+                    
+                    <h3 style="margin-top: 20px;">История версий</h3>
+                    <table>
+                        <tr>
+                            <th>ID</th>
+                            <th>Комментарий</th>
+                            <th>Пользователь</th>
+                            <th>Время</th>
+                            <th>Действия</th>
+                        </tr>
+                        ${versionControl.versions.map(v => `
+                            <tr>
+                                <td>${v.id}</td>
+                                <td>${v.comment}</td>
+                                <td>${v.user}</td>
+                                <td>${v.time}</td>
+                                <td>
+                                    <button onclick="rollbackToVersion(${v.id})">↩️ Откатить</button>
+                                </td>
+                            </tr>
+                        `).join('')}
+                    </table>
+                </div>
+            `;
+        }
+
+        // ========== ДЕЙСТВИЯ ПОЛЬЗОВАТЕЛЯ ==========
+        function doLogin() {
+            const login = document.getElementById('login').value;
+            const pass = document.getElementById('password').value;
+            
+            const result = security.checkLogin(login, pass);
+            
+            if (result.success) {
+                currentUser = result.user;
+                versionControl.save({ employees }, 'Начальное состояние');
+                render();
+            } else {
+                document.getElementById('loginError').innerHTML = 
+                    `<div class="error">${result.message || 'Ошибка входа'}</div>`;
+            }
+        }
+
+        function logout() {
+            security.log('info', 'Выход из системы');
+            currentUser = null;
+            render();
+        }
+
+        function addEmployee() {
+            if (!security.checkRole('hr')) return;
+            
+            const newEmp = {
+                id: employees.length + 1,
+                name: document.getElementById('empName').value,
+                dept: document.getElementById('empDept').value,
+                pos: document.getElementById('empPos').value,
+                salary: parseFloat(document.getElementById('empSalary').value),
+                exp: parseInt(document.getElementById('empExp').value),
+                status: 'active'
+            };
+            
+            employees.push(newEmp);
+            versionControl.save({ employees }, `Добавлен сотрудник: ${newEmp.name}`);
+            security.log('info', `Добавлен сотрудник: ${newEmp.name}`);
+            renderEmployees();
+        }
+
+        function deleteEmployee(id) {
+            if (!security.checkRole('hr')) return;
+            
+            const emp = employees.find(e => e.id === id);
+            employees = employees.filter(e => e.id !== id);
+            versionControl.save({ employees }, `Удален сотрудник: ${emp.name}`);
+            security.log('warning', `Удален сотрудник: ${emp.name}`);
+            renderEmployees();
+        }
+
+        function calculateAndShow() {
+            const base = parseFloat(document.getElementById('calcBase').value);
+            const bonus = parseFloat(document.getElementById('calcBonus').value);
+            const exp = parseFloat(document.getElementById('calcExp').value);
+            
+            const result = calculators.calculateSalary(base, bonus, exp);
+            
+            document.getElementById('calcResult').innerHTML = `
+                <h4>Результат расчета:</h4>
+                <p>Начислено: ${result.gross} ₽</p>
+                <p>НДФЛ (13%): ${result.tax} ₽</p>
+                <p>Пенсионные: ${result.pension} ₽</p>
+                <p>Медицина: ${result.medical} ₽</p>
+                <p><strong>К выплате: ${result.net} ₽</strong></p>
+                <p>Всего налогов: ${result.totalTaxes} ₽</p>
+            `;
+        }
+
+        function showForecast() {
+            const forecast = calculators.forecastBudget(3);
+            
+            document.getElementById('forecastResult').innerHTML = `
+                <table>
+                    <tr>
+                        <th>Месяц</th>
+                        <th>Зарплаты</th>
+                        <th>Налоги</th>
+                        <th>Всего</th>
+                    </tr>
+                    ${forecast.map(f => `
+                        <tr>
+                            <td>${f.month}</td>
+                            <td>${f.salary} ₽</td>
+                            <td>${f.taxes} ₽</td>
+                            <td>${f.total} ₽</td>
+                        </tr>
+                    `).join('')}
+                </table>
+            `;
+        }
+
+        function saveVersion() {
+            versionControl.save({ employees }, 'Ручное сохранение');
+            alert('Версия сохранена');
+        }
+
+        function rollbackToVersion(id) {
+            if (versionControl.rollback(id)) {
+                alert('Восстановлено');
+                renderEmployees();
+            }
+        }
+
+        function changeRole(userId) {
+            const newRole = prompt('Введите новую роль (admin/hr/manager):');
+            if (newRole && ['admin', 'hr', 'manager'].includes(newRole)) {
+                const user = users.find(u => u.id === userId);
+                if (user) {
+                    user.role = newRole;
+                    security.log('info', `Изменена роль пользователя ${user.login} на ${newRole}`);
+                    renderAdmin();
+                }
+            }
+        }
+
+        // Запуск приложения
+        render();
+    </script>
+</body>
+</html>
